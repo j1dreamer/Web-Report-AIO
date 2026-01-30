@@ -108,11 +108,17 @@ class AnalyzerEngine:
     async def get_total_records_count(self):
         return await reports_collection.count_documents({})
 
-    async def filter_data(self, site, device):
+    async def filter_data(self, site, device, hours=None):
         """Lấy dữ liệu từ MongoDB cho biểu đồ."""
         query = {}
         if site != "All Sites": query["site"] = site
         if device != "All Devices": query["device"] = device
+        
+        if hours:
+            from datetime import timedelta
+            # Lấy theo thời gian hiện tại trừ đi số giờ
+            start_time = datetime.now() - timedelta(hours=hours)
+            query["dt_obj"] = {"$gte": start_time}
         
         cursor = reports_collection.find(query, {"dt_obj": 1, "clients": 1, "health": 1, "state": 1, "_id": 0})
         records = await cursor.to_list(length=100000) # Lấy tối đa 100k bản ghi
@@ -120,10 +126,15 @@ class AnalyzerEngine:
         if not records: return pd.DataFrame()
         return pd.DataFrame(records)
 
-    async def filter_data_multiple(self, sites, device):
+    async def filter_data_multiple(self, sites, device, hours=None):
         """Lọc dữ liệu cho danh sách nhiều site cùng lúc (dùng cho User bình thường)."""
         query = {"site": {"$in": sites}}
         if device != "All Devices": query["device"] = device
+
+        if hours:
+            from datetime import timedelta
+            start_time = datetime.now() - timedelta(hours=hours)
+            query["dt_obj"] = {"$gte": start_time}
         
         cursor = reports_collection.find(query, {"dt_obj": 1, "clients": 1, "health": 1, "state": 1, "site": 1, "device": 1, "_id": 0})
         records = await cursor.to_list(length=100000)

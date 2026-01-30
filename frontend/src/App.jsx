@@ -7,7 +7,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "./components/ui/card";
 import { Button } from "./components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-import { Loader2, Filter, TrendingUp, ShieldCheck, LogOut, Settings, Plus, Trash2, LayoutDashboard, Database, Activity, PieChart } from "lucide-react";
+import { Loader2, Filter, TrendingUp, ShieldCheck, LogOut, Settings, Plus, Trash2, LayoutDashboard, Database, Activity, PieChart, Clock } from "lucide-react";
 
 import Login from './Login';
 import AdminPanel from './AdminPanel';
@@ -23,6 +23,7 @@ function App() {
   const [siteMap, setSiteMap] = useState({ "All Sites": ["All Devices"] });
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [timeRange, setTimeRange] = useState("0");
 
   const [newWidgetForm, setNewWidgetForm] = useState({
     title: "New Analytics",
@@ -93,6 +94,23 @@ function App() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-[140px] bg-zinc-900 border-zinc-800 rounded-full h-10 px-4 font-bold text-xs text-white">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3 h-3 text-blue-500" />
+                  <SelectValue placeholder="Time Range" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-300">
+                <SelectItem value="0">Tất cả thời gian</SelectItem>
+                <SelectItem value="1">1 giờ qua</SelectItem>
+                <SelectItem value="4">4 giờ qua</SelectItem>
+                <SelectItem value="6">6 giờ qua</SelectItem>
+                <SelectItem value="12">12 giờ qua</SelectItem>
+                <SelectItem value="24">24 giờ qua</SelectItem>
+              </SelectContent>
+            </Select>
+
             {isAdmin && (
               <Button variant="outline" onClick={() => setShowAdminPanel(!showAdminPanel)} className="border-zinc-800 text-zinc-100 hover:bg-zinc-800 rounded-full h-10 px-4 font-bold">
                 <Settings className="w-4 h-4 mr-2" /> {showAdminPanel ? "CLOSE ADMIN" : "ADMIN PANEL"}
@@ -164,7 +182,15 @@ function App() {
             </div>
 
             <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {widgets.map(w => <WidgetCard key={w.id} widget={w} onRemove={() => removeWidget(w.id)} />)}
+              {widgets.map(w => (
+                <div key={w.id} className="lg:col-span-6 xl:col-span-4">
+                  <WidgetCard
+                    widget={w}
+                    timeRange={timeRange}
+                    onRemove={() => removeWidget(w.id)}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -173,7 +199,7 @@ function App() {
   );
 }
 
-function WidgetCard({ widget, onRemove }) {
+function WidgetCard({ widget, onRemove, timeRange }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -183,14 +209,17 @@ function WidgetCard({ widget, onRemove }) {
       const res = await axios.post(`${API_BASE}/analyze`, {
         site: widget.site,
         device: widget.device,
-        metric: widget.metric
+        metric: widget.metric,
+        hours: timeRange === "0" ? null : parseInt(timeRange)
       }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
       setData(res.data);
     } catch (err) { }
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [widget]);
+  useEffect(() => {
+    fetchData();
+  }, [widget, timeRange]);
 
   return (
     <Card className="bg-zinc-900 border-zinc-800 shadow-xl relative group">

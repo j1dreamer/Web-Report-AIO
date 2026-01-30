@@ -50,6 +50,11 @@ class UserCreate(BaseModel):
     role: str = "user"
     allowed_sites: List[str] = []
 
+class UserUpdate(BaseModel):
+    role: Optional[str]
+    allowed_sites: Optional[List[str]]
+    password: Optional[str] = None
+
 class DashboardConfig(BaseModel):
     config: List[dict]
 
@@ -58,6 +63,7 @@ class FilterRequest(BaseModel):
     device: Optional[str] = "All Devices"
     metric: Optional[str] = "clients"
     chart_type: Optional[str] = "area"
+    hours: Optional[int] = None
 
 # --- Startup ---
 @app.on_event("startup")
@@ -144,6 +150,18 @@ async def delete_user(username: str, admin: dict = Depends(admin_only)):
     await users_collection.delete_one({"username": username})
     return {"status": "success"}
 
+@app.put("/api/admin/users/{username}")
+async def update_user(username: str, req: UserUpdate, admin: dict = Depends(admin_only)):
+    update_data = {}
+    if req.role is not None: update_data["role"] = req.role
+    if req.allowed_sites is not None: update_data["allowed_sites"] = req.allowed_sites
+    if req.password: update_data["password"] = get_password_hash(req.password)
+    
+    if not update_data: return {"status": "no change"}
+    
+    await users_collection.update_one({"username": username}, {"$set": update_data})
+    return {"status": "success"}
+
 @app.post("/api/user/dashboard")
 async def save_dashboard(req: DashboardConfig, user: dict = Depends(get_current_user)):
     await users_collection.update_one({"username": user["username"]}, {"$set": {"dashboard": req.config}})
@@ -188,9 +206,9 @@ async def analyze(req: FilterRequest, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Access denied")
     
     if req.site == "All Sites":
-        df = await backend.filter_data_multiple(allowed, req.device) if user["role"] == "user" else await backend.filter_data(req.site, req.device)
+        df = await backend.filter_data_multiple(allowed, req.device, req.hours) if user["role"] == "user" else await backend.filter_data(req.site, req.device, req.hours)
     else:
-        df = await backend.filter_data(req.site, req.device)
+        df = await backend.filter_data(req.site, req.device, req.hours)
 
     if df.empty: return []
 
