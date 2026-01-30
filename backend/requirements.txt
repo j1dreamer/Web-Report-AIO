@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+pydantic
+pandas
+boto3
+python-dotenv
+openpyxl
+scipy
+python-multipart
+motor
+passlib[bcrypt]
+python-jose[cryptography]

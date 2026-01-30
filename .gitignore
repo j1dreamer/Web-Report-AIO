@@ -1,0 +1,11 @@
+config.json
+dist/
+build/
+__pycache__/
+*.spec
+chrome_profile/
+Reports/
+*.log
+archive/
+.env
+Dummy_Data_AITC/
