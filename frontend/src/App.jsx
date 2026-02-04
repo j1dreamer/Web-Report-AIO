@@ -15,6 +15,68 @@ import AdminPanel from './AdminPanel';
 const API_BASE = "http://127.0.0.1:8000/api";
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+function SyncProgress({ API_BASE, getHeaders, triggerLoad, externalLoading }) {
+  const [status, setStatus] = useState({ is_syncing: false, current_step: "Idle", files_total: 0, files_done: 0, last_message: "" });
+
+  useEffect(() => {
+    let interval;
+    if (status.is_syncing || externalLoading) {
+      interval = setInterval(async () => {
+        try {
+          const res = await axios.get(`${API_BASE}/sync-status`, { headers: getHeaders() });
+          setStatus(res.data);
+          if (!res.data.is_syncing && !externalLoading) clearInterval(interval);
+        } catch (e) { clearInterval(interval); }
+      }, 1000);
+    } else {
+      // Poll một lần để lấy message cuối cùng
+      axios.get(`${API_BASE}/sync-status`, { headers: getHeaders() }).then(res => setStatus(res.data)).catch(() => { });
+    }
+    return () => clearInterval(interval);
+  }, [status.is_syncing, externalLoading]);
+
+  const progress = status.files_total > 0 ? Math.round((status.files_done / status.files_total) * 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-between text-[10px] font-bold uppercase tracking-tight">
+          <span className={status.is_syncing ? "text-blue-400" : "text-zinc-500"}>
+            {status.is_syncing ? status.current_step : "System Ready"}
+          </span>
+          {status.is_syncing && status.files_total > 0 && (
+            <span className="text-zinc-400">{status.files_done}/{status.files_total} files</span>
+          )}
+        </div>
+
+        <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all duration-500 rounded-full ${status.is_syncing ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-emerald-500/30'}`}
+            style={{ width: `${status.is_syncing ? (progress || 5) : 100}%` }}
+          />
+        </div>
+      </div>
+
+      <Button
+        onClick={triggerLoad}
+        disabled={status.is_syncing || externalLoading}
+        className={`w-full font-black text-[10px] tracking-[0.1em] h-10 transition-all ${status.is_syncing
+            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+            : 'bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 border border-emerald-600/30 hover:border-emerald-500 shadow-lg shadow-emerald-500/5'
+          }`}
+      >
+        {status.is_syncing ? "SYNC IN PROGRESS..." : "FORCE CLOUD REFRESH"}
+      </Button>
+
+      {status.last_message && !status.is_syncing && (
+        <p className="text-[9px] text-center font-bold text-zinc-500 uppercase italic tracking-wider animate-pulse">
+          Last: {status.last_message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -24,6 +86,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [timeRange, setTimeRange] = useState("0");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [newWidgetForm, setNewWidgetForm] = useState({
     title: "New Analytics",
@@ -51,6 +114,7 @@ function App() {
       setSiteMap(res.data.site_map);
       setWidgets(res.data.dashboard || []);
       setStatus(res.data.message);
+      setRefreshTrigger(prev => prev + 1); // Kích hoạt các biểu đồ tải lại ngay lập tức
     } catch (err) {
       if (err.response?.status === 401) handleLogout();
     }
@@ -173,9 +237,16 @@ function App() {
               </Card>
 
               {isAdmin && (
-                <Card className="bg-zinc-900 border-green-900/40">
-                  <CardHeader><CardTitle className="text-xs font-black text-green-500 uppercase tracking-widest">Admin Sync</CardTitle></CardHeader>
-                  <CardContent><Button onClick={() => handleLoad()} disabled={loading} className="w-full bg-zinc-800 hover:bg-zinc-700 text-green-500 font-bold border border-green-900/50">FORCE CLOUD REFRESH</Button></CardContent>
+                <Card className="bg-zinc-900 border-zinc-800 ring-1 ring-zinc-800 shadow-2xl overflow-hidden">
+                  <CardHeader className="pb-3 border-b border-zinc-800 bg-zinc-800/20">
+                    <CardTitle className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] flex items-center justify-between">
+                      Infrastructure Sync
+                      {loading && <Loader2 className="w-3 h-3 animate-spin" />}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-5 space-y-4">
+                    <SyncProgress API_BASE={API_BASE} getHeaders={getHeaders} triggerLoad={handleLoad} externalLoading={loading} />
+                  </CardContent>
                 </Card>
               )}
               {status && <div className="text-[9px] text-zinc-500 font-mono italic text-center animate-pulse tracking-wide uppercase">{status}</div>}
@@ -187,6 +258,7 @@ function App() {
                   <WidgetCard
                     widget={w}
                     timeRange={timeRange}
+                    refreshTrigger={refreshTrigger}
                     onRemove={() => removeWidget(w.id)}
                   />
                 </div>
@@ -199,7 +271,7 @@ function App() {
   );
 }
 
-function WidgetCard({ widget, onRemove, timeRange }) {
+function WidgetCard({ widget, onRemove, timeRange, refreshTrigger }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -221,7 +293,7 @@ function WidgetCard({ widget, onRemove, timeRange }) {
     fetchData();
     const interval = setInterval(fetchData, 300000); // Tự động làm mới dữ liệu sau mỗi 5 phút
     return () => clearInterval(interval);
-  }, [widget, timeRange]);
+  }, [widget, timeRange, refreshTrigger]);
 
   return (
     <Card className="bg-zinc-900 border-zinc-800 shadow-xl relative group">

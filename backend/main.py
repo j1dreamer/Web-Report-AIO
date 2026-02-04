@@ -14,12 +14,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from engine import AnalyzerEngine
-from database_mongo import init_mongo_indexes, users_collection
+from database_mongo import init_mongo_indexes, users_collection, files_collection
 from auth import verify_password, get_password_hash, create_access_token, decode_token
 
 app = FastAPI(title="HPE Report Analyzer API")
 backend = AnalyzerEngine()
 security = HTTPBearer()
+
+# --- Global Sync Status ---
+sync_status = {
+    "is_syncing": False,
+    "current_step": "Idle",
+    "files_total": 0,
+    "files_done": 0,
+    "last_message": "Ready"
+}
 
 # --- Auth Dependencies ---
 async def get_current_user(auth: HTTPAuthorizationCredentials = Security(security)):
@@ -66,20 +75,6 @@ class FilterRequest(BaseModel):
     hours: Optional[int] = None
 
 # --- Startup ---
-# --- Background Sync Task ---
-async def r2_sync_loop():
-    """Vòng lặp chạy ngầm để đồng bộ dữ liệu R2 mỗi 30 phút."""
-    print("Background Sync started.")
-    while True:
-        try:
-            print(f"Starting scheduled sync at {datetime.now()}")
-            files = await asyncio.to_thread(fetch_r2_files)
-            if files:
-                await backend.load_multiple_from_memory(files)
-        except Exception as e:
-            print(f"Scheduled sync failed: {e}")
-        await asyncio.sleep(1800) # 30 mins
-
 @app.on_event("startup")
 async def startup_event():
     await init_mongo_indexes()
@@ -93,9 +88,6 @@ async def startup_event():
         }
         await users_collection.insert_one(admin_user)
         print("Default admin created: admin / admin123")
-    
-    # Chạy sync ngay lập tức khi startup
-    asyncio.create_task(r2_sync_loop())
     
     count = await backend.get_total_records_count()
     print(f"Startup: MongoDB connected with {count} records.")
@@ -116,19 +108,56 @@ def get_r2_client():
         region_name="auto"
     )
 
-def fetch_r2_files():
+async def fetch_r2_files():
+    global sync_status
     client = get_r2_client()
-    if not client: return []
+    if not client: 
+        sync_status["last_message"] = "Invalid R2 Credentials"
+        return []
+    
+    sync_status["is_syncing"] = True
+    sync_status["current_step"] = "Scanning Cloudflare R2..."
+    sync_status["files_done"] = 0
+    
+    # 1. Lấy danh sách file đã xử lý từ DB
+    processed = await files_collection.distinct("filename")
+    processed_set = set(processed)
+    
+    # 2. Liệt kê file trên R2
     paginator = client.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix=DATA_FOLDER_PREFIX)
-    file_list = []
+    pages = await asyncio.to_thread(lambda: list(paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix=DATA_FOLDER_PREFIX)))
+    
+    to_download = []
     for page in pages:
         for obj in page.get('Contents', []):
             key = obj['Key']
+            fname = os.path.basename(key)
             if key.endswith('/') or not (key.lower().endswith('.csv') or key.lower().endswith('.xlsx')): continue
-            response = client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
-            file_list.append((response['Body'].read(), os.path.basename(key)))
-    return file_list
+            if fname in processed_set: continue
+            to_download.append(key)
+    
+    if not to_download:
+        sync_status["is_syncing"] = False
+        sync_status["current_step"] = "Idle"
+        sync_status["last_message"] = "Everything is up to date"
+        return []
+
+    sync_status["files_total"] = len(to_download)
+    sync_status["current_step"] = f"Downloading {len(to_download)} new files..."
+
+    # 3. Tải các file mới song song
+    async def download_one(key):
+        try:
+            resp = await asyncio.to_thread(client.get_object, Bucket=R2_BUCKET_NAME, Key=key)
+            data = (resp['Body'].read(), os.path.basename(key))
+            sync_status["files_done"] += 1
+            return data
+        except Exception as e:
+            print(f"Failed to download {key}: {e}")
+            return None
+
+    results = await asyncio.gather(*[download_one(k) for k in to_download[:20]]) 
+    return [r for r in results if r is not None]
 
 # --- CORS ---
 from fastapi.middleware.cors import CORSMiddleware
@@ -187,15 +216,18 @@ async def save_dashboard(req: DashboardConfig, user: dict = Depends(get_current_
 
 @app.post("/api/load")
 async def load_data(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    async def sync_with_r2():
-        try:
-            files = await asyncio.to_thread(fetch_r2_files)
-            if files: await backend.load_multiple_from_memory(files)
-        except Exception as e: print(f"Sync failed: {e}")
+    global sync_status
+    if user["role"] == "admin" and sync_status["is_syncing"]:
+        # Trả về luôn nếu admin đang có sync chạy rồi
+        return {
+            "status": "warning",
+            "message": "Sync already in progress...",
+            "site_map": {"All Sites": ["All Devices"]},
+            "dashboard": user.get("dashboard", []),
+            "role": user["role"]
+        }
 
-    background_tasks.add_task(sync_with_r2)
-    
-    # Allowed sites logic
+    # 1. Trả về thông tin UI ngay lập tức
     if user["role"] == "admin":
         sites = await backend.get_sites()
     else:
@@ -209,13 +241,37 @@ async def load_data(background_tasks: BackgroundTasks, user: dict = Depends(get_
         {"id": "default", "title": "Network Trend", "metric": "clients", "type": "area", "site": "All Sites", "device": "All Devices"}
     ])
 
+    # 2. Chạy sync R2 trong background
+    async def run_sync():
+        global sync_status
+        try:
+            files = await fetch_r2_files()
+            if files:
+                sync_status["current_step"] = "Saving to Database..."
+                new_count, skipped = await backend.load_multiple_from_memory(files)
+                sync_status["last_message"] = f"Success! Added {new_count} records."
+            else:
+                if sync_status["last_message"] != "Invalid R2 Credentials":
+                    sync_status["last_message"] = "No new data found on R2."
+        except Exception as e:
+            sync_status["last_message"] = f"Error: {str(e)}"
+        finally:
+            sync_status["is_syncing"] = False
+            sync_status["current_step"] = "Idle"
+
+    background_tasks.add_task(run_sync)
+
     return {
         "status": "success",
-        "message": "Connected. Syncing cloud in background...",
+        "message": "Syncing cloud files in background...",
         "site_map": site_map,
         "dashboard": dashboard,
         "role": user["role"]
     }
+
+@app.get("/api/sync-status")
+async def get_sync_status(user: dict = Depends(admin_only)):
+    return sync_status
 
 @app.post("/api/analyze")
 async def analyze(req: FilterRequest, user: dict = Depends(get_current_user)):
