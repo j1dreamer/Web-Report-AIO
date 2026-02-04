@@ -78,8 +78,8 @@ class AnalyzerEngine:
         df.columns = [str(c).strip().title() for c in df.columns] 
         
         for _, row in df.iterrows():
-            dev = row.get("Device", row.get("Name", ""))
-            if not dev or str(dev).lower() in ["device", "nan", ""]: continue
+            dev = str(row.get("Device", row.get("Name", ""))).strip()
+            if not dev or dev.lower() in ["device", "nan", ""]: continue
             
             try: client_count = int(float(row.get("Clients", 0)))
             except: client_count = 0

@@ -212,12 +212,25 @@ async def analyze(req: FilterRequest, user: dict = Depends(get_current_user)):
 
     if df.empty: return []
 
+    # Dọn dẹp dữ liệu: Xóa khoảng trắng thừa để tránh trùng lặp do lỗi nhập liệu
+    df['site'] = df['site'].astype(str).str.strip()
+    df['device'] = df['device'].astype(str).str.strip()
+    df['time_str'] = df['dt_obj'].dt.strftime("%Y-%m-%d %H:%M")
+
     if req.metric == "clients":
-        chart_data = df.groupby('dt_obj')['clients'].sum().sort_index()
-        return [{"time": dt.strftime("%Y-%m-%d %H:%M"), "clients": int(c)} for dt, c in chart_data.items()]
+        # 1. Lọc trùng: Lấy MAX nếu cùng Site, Device, Phút
+        df_dedup = df.groupby(['site', 'device', 'time_str'])['clients'].max().reset_index()
+        
+        # 2. Nhóm theo thời gian: Cộng tổng clients của tất cả thiết bị trong phút đó
+        chart_data = df_dedup.groupby('time_str')['clients'].sum().sort_index()
+        return [{"time": t, "clients": int(c)} for t, c in chart_data.items()]
+    
     elif req.metric in ["health", "state"]:
-        dist = df[req.metric].value_counts()
+        # Tương tự cho Health/State: Lấy bản ghi mới nhất/duy nhất của mỗi thiết bị trong phút đó
+        df_dedup = df.sort_values('dt_obj').drop_duplicates(['site', 'device', 'time_str'], keep='last')
+        dist = df_dedup[req.metric].value_counts()
         return [{"name": str(label), "value": int(val)} for label, val in dist.items()]
+    
     return []
 
 if __name__ == "__main__":

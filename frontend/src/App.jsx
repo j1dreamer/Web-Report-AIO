@@ -240,7 +240,12 @@ function WidgetCard({ widget, onRemove, timeRange }) {
                 <XAxis
                   dataKey="time"
                   tick={{ fontSize: 10, fill: '#71717a' }}
-                  tickFormatter={(val) => val.split(' ')[1] || val}
+                  tickFormatter={(val) => {
+                    const [date, time] = val.split(' ');
+                    if (!date || !time) return val;
+                    const [y, m, d] = date.split('-');
+                    return `${d}/${m} ${time}`;
+                  }}
                   axisLine={false}
                   tickLine={false}
                   minTickGap={30}
