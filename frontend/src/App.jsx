@@ -219,6 +219,8 @@ function WidgetCard({ widget, onRemove, timeRange }) {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(fetchData, 300000); // Tự động làm mới dữ liệu sau mỗi 5 phút
+    return () => clearInterval(interval);
   }, [widget, timeRange]);
 
   return (

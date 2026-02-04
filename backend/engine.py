@@ -49,8 +49,8 @@ class AnalyzerEngine:
     def process_file_data(self, file_source, fname):
         """Logic phân tích file Excel/CSV thành list các dict cho MongoDB."""
         all_records = []
-        date_time_pattern = re.compile(r"(\d{2}[-.\/]\d{2}[-.\/]\d{4}|\d{4}[-.\/]\d{2}[-.\/]\d{2})")
-        time_pattern = re.compile(r"(\d{2}[h:]\d{2})")
+        date_time_pattern = re.compile(r"(\d{1,4}[-.\/]\d{1,2}[-.\/]\d{1,4})")
+        time_pattern = re.compile(r"(\d{1,2}[h:]\d{1,2})")
 
         site_name = "Unknown"
         dt_obj = None
@@ -120,7 +120,7 @@ class AnalyzerEngine:
             start_time = datetime.now() - timedelta(hours=hours)
             query["dt_obj"] = {"$gte": start_time}
         
-        cursor = reports_collection.find(query, {"dt_obj": 1, "clients": 1, "health": 1, "state": 1, "_id": 0})
+        cursor = reports_collection.find(query, {"dt_obj": 1, "clients": 1, "health": 1, "state": 1, "site": 1, "device": 1, "_id": 0})
         records = await cursor.to_list(length=100000) # Lấy tối đa 100k bản ghi
         
         if not records: return pd.DataFrame()

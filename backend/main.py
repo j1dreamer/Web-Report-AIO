@@ -66,6 +66,20 @@ class FilterRequest(BaseModel):
     hours: Optional[int] = None
 
 # --- Startup ---
+# --- Background Sync Task ---
+async def r2_sync_loop():
+    """Vòng lặp chạy ngầm để đồng bộ dữ liệu R2 mỗi 30 phút."""
+    print("Background Sync started.")
+    while True:
+        try:
+            print(f"Starting scheduled sync at {datetime.now()}")
+            files = await asyncio.to_thread(fetch_r2_files)
+            if files:
+                await backend.load_multiple_from_memory(files)
+        except Exception as e:
+            print(f"Scheduled sync failed: {e}")
+        await asyncio.sleep(1800) # 30 mins
+
 @app.on_event("startup")
 async def startup_event():
     await init_mongo_indexes()
@@ -79,6 +93,10 @@ async def startup_event():
         }
         await users_collection.insert_one(admin_user)
         print("Default admin created: admin / admin123")
+    
+    # Chạy sync ngay lập tức khi startup
+    asyncio.create_task(r2_sync_loop())
+    
     count = await backend.get_total_records_count()
     print(f"Startup: MongoDB connected with {count} records.")
 
