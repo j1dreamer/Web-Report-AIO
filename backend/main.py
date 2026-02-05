@@ -145,18 +145,21 @@ async def fetch_r2_files():
     sync_status["files_total"] = len(to_download)
     sync_status["current_step"] = f"Downloading {len(to_download)} new files..."
 
-    # 3. Tải các file mới song song
-    async def download_one(key):
-        try:
-            resp = await asyncio.to_thread(client.get_object, Bucket=R2_BUCKET_NAME, Key=key)
-            data = (resp['Body'].read(), os.path.basename(key))
-            sync_status["files_done"] += 1
-            return data
-        except Exception as e:
-            print(f"Failed to download {key}: {e}")
-            return None
+    # 3. Tải các file mới song song (giới hạn 50 file cùng lúc để tránh quá tải mạng)
+    semaphore = asyncio.Semaphore(50)
+    
+    async def download_one_safe(key):
+        async with semaphore:
+            try:
+                resp = await asyncio.to_thread(client.get_object, Bucket=R2_BUCKET_NAME, Key=key)
+                data = (resp['Body'].read(), os.path.basename(key))
+                sync_status["files_done"] += 1
+                return data
+            except Exception as e:
+                print(f"Failed to download {key}: {e}")
+                return None
 
-    results = await asyncio.gather(*[download_one(k) for k in to_download[:20]]) 
+    results = await asyncio.gather(*[download_one_safe(k) for k in to_download]) 
     return [r for r in results if r is not None]
 
 # --- CORS ---
