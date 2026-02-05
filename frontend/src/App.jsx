@@ -305,7 +305,7 @@ function WidgetCard({ widget, onRemove, timeRange, refreshTrigger }) {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 300000); // Tự động làm mới dữ liệu sau mỗi 5 phút
+    const interval = setInterval(fetchData, 60000); // Tự động làm mới dữ liệu mỗi 1 phút
     return () => clearInterval(interval);
   }, [widget, timeRange, refreshTrigger]);
 
