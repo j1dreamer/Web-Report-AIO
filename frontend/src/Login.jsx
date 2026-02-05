@@ -5,7 +5,7 @@ import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Loader2, Lock, User, ShieldCheck } from "lucide-react";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
 
 function Login({ onLoginSuccess }) {
     const [username, setUsername] = useState("");

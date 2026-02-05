@@ -12,7 +12,7 @@ import { Loader2, Filter, TrendingUp, ShieldCheck, LogOut, Settings, Plus, Trash
 import Login from './Login';
 import AdminPanel from './AdminPanel';
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 function SyncProgress({ API_BASE, getHeaders, triggerLoad, externalLoading }) {
@@ -61,8 +61,8 @@ function SyncProgress({ API_BASE, getHeaders, triggerLoad, externalLoading }) {
         onClick={triggerLoad}
         disabled={status.is_syncing || externalLoading}
         className={`w-full font-black text-[10px] tracking-[0.1em] h-10 transition-all ${status.is_syncing
-            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-            : 'bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 border border-emerald-600/30 hover:border-emerald-500 shadow-lg shadow-emerald-500/5'
+          ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+          : 'bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 border border-emerald-600/30 hover:border-emerald-500 shadow-lg shadow-emerald-500/5'
           }`}
       >
         {status.is_syncing ? "SYNC IN PROGRESS..." : "FORCE CLOUD REFRESH"}
@@ -111,10 +111,16 @@ function App() {
     setLoading(true);
     try {
       const res = await axios.post(`${API_BASE}/load`, null, { headers: getHeaders() });
-      setSiteMap(res.data.site_map);
+      const newMap = res.data.site_map;
+      setSiteMap(newMap);
       setWidgets(res.data.dashboard || []);
       setStatus(res.data.message);
-      setRefreshTrigger(prev => prev + 1); // Kích hoạt các biểu đồ tải lại ngay lập tức
+      setRefreshTrigger(prev => prev + 1);
+
+      // Nếu "All Sites" không tồn tại, tự động chọn Site đầu tiên có trong danh sách
+      if (newMap && !newMap["All Sites"] && Object.keys(newMap).length > 0) {
+        setNewWidgetForm(prev => ({ ...prev, site: Object.keys(newMap)[0] }));
+      }
     } catch (err) {
       if (err.response?.status === 401) handleLogout();
     }
@@ -197,8 +203,12 @@ function App() {
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-zinc-500 uppercase">Site</label>
-                      <Select value={newWidgetForm.site} onValueChange={v => setNewWidgetForm({ ...newWidgetForm, site: v, device: "All Devices" })}>
-                        <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs font-bold text-zinc-200">
+                      <Select
+                        value={newWidgetForm.site}
+                        onValueChange={v => setNewWidgetForm({ ...newWidgetForm, site: v, device: "All Devices" })}
+                        disabled={Object.keys(siteMap).length <= 1}
+                      >
+                        <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs font-bold text-zinc-200 disabled:opacity-80">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
@@ -208,8 +218,12 @@ function App() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-zinc-500 uppercase">Device</label>
-                      <Select value={newWidgetForm.device} onValueChange={v => setNewWidgetForm({ ...newWidgetForm, device: v })}>
-                        <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs font-bold text-zinc-200">
+                      <Select
+                        value={newWidgetForm.device}
+                        onValueChange={v => setNewWidgetForm({ ...newWidgetForm, device: v })}
+                        disabled={(siteMap[newWidgetForm.site] || []).length <= 1}
+                      >
+                        <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs font-bold text-zinc-200 disabled:opacity-80">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">

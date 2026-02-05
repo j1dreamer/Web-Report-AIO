@@ -233,13 +233,38 @@ async def load_data(background_tasks: BackgroundTasks, user: dict = Depends(get_
     else:
         sites = user.get("allowed_sites", [])
     
-    site_map = {"All Sites": ["All Devices"]}
+    # Chỉ hiện "All Sites" nếu thực sự có từ 2 Site trở lên (cho cả Admin và User)
+    show_all = len(sites) > 1
+    
+    site_map = {}
+    if show_all:
+        site_map["All Sites"] = ["All Devices"]
+        
     for s in sites:
         site_map[s] = ["All Devices"] + await backend.get_devices(site=s)
 
-    dashboard = user.get("dashboard", [
-        {"id": "default", "title": "Network Trend", "metric": "clients", "type": "area", "site": "All Sites", "device": "All Devices"}
-    ])
+    # Xác định Site mặc định cho Dashboard nếu user chưa có cấu hình
+    default_site = "All Sites" if show_all else (sites[0] if sites else "Unknown")
+
+    # Lấy dashboard cũ và lọc bỏ các site không còn quyền truy cập hoặc "All Sites" nếu bị ẩn
+    raw_dashboard = user.get("dashboard", [])
+    sanitized_dashboard = []
+    
+    for widget in raw_dashboard:
+        w_site = widget.get("site")
+        # Giữ lại nếu site đó nằm trong danh sách được phép hoặc (là All Sites và hệ thống cho phép hiện All Sites)
+        if w_site in sites or (w_site == "All Sites" and show_all):
+            sanitized_dashboard.append(widget)
+        else:
+            # Nếu widget bị sai site, tự động chuyển về site mặc định thay vì xóa bỏ
+            widget["site"] = default_site
+            widget["device"] = "All Devices"
+            sanitized_dashboard.append(widget)
+
+    if not sanitized_dashboard:
+        sanitized_dashboard = [
+            {"id": "default", "title": "Network Trend", "metric": "clients", "type": "area", "site": default_site, "device": "All Devices"}
+        ]
 
     # 2. Chạy sync R2 trong background
     async def run_sync():
@@ -265,7 +290,7 @@ async def load_data(background_tasks: BackgroundTasks, user: dict = Depends(get_
         "status": "success",
         "message": "Syncing cloud files in background...",
         "site_map": site_map,
-        "dashboard": dashboard,
+        "dashboard": sanitized_dashboard,
         "role": user["role"]
     }
 

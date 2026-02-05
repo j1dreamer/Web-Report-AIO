@@ -5,7 +5,7 @@ import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Loader2, UserPlus, Users, Trash2, Shield, Globe, X, Settings } from "lucide-react";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
 
 function AdminPanel({ onBack, allSites }) {
     const [users, setUsers] = useState([]);
