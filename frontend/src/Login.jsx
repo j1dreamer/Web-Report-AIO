@@ -7,11 +7,11 @@ import { Loader2, Lock, User, ShieldCheck } from "lucide-react";
 
 const API_BASE = (function () {
     const { hostname, protocol } = window.location;
-    // Nếu chạy local trực tiếp không qua docker (như npm run dev ở máy cá nhân)
+    // Nếu chạy local ở máy cá nhân không qua docker
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return `${protocol}//${hostname}:8000/api`;
+        return "http://localhost:8000/api";
     }
-    // Trường hợp chạy qua Docker (truy cập bằng IP đầu 10 hoặc IP Public)
+    // TRƯỜNG HỢP CHẠY DOCKER (IP Đầu 10 hoặc IP Public) gọi về port 3001
     return `${protocol}//${hostname}:3001/api`;
 })();
 
@@ -29,7 +29,6 @@ function Login({ onLoginSuccess }) {
             const res = await axios.post(`${API_BASE}/auth/login`, { username, password });
             const { access_token, user } = res.data;
 
-            // Save to local storage
             localStorage.setItem("token", access_token);
             localStorage.setItem("user", JSON.stringify(user));
 

@@ -15,7 +15,7 @@ import AdminPanel from './AdminPanel';
 const API_BASE = (function () {
   const { hostname, protocol } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return `${protocol}//${hostname}:8000/api`;
+    return "http://localhost:8000/api";
   }
   return `${protocol}//${hostname}:3001/api`;
 })();
