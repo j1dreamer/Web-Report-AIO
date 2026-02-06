@@ -6,11 +6,13 @@ import { Button } from "./components/ui/button";
 import { Loader2, Lock, User, ShieldCheck } from "lucide-react";
 
 const API_BASE = (function () {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-        return "http://localhost:8000/api";
+    const { hostname, protocol } = window.location;
+    // Nếu chạy local trực tiếp không qua docker (như npm run dev ở máy cá nhân)
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return `${protocol}//${hostname}:8000/api`;
     }
-    return `http://${host}:3001/api`;
+    // Trường hợp chạy qua Docker (truy cập bằng IP đầu 10 hoặc IP Public)
+    return `${protocol}//${hostname}:3001/api`;
 })();
 
 function Login({ onLoginSuccess }) {

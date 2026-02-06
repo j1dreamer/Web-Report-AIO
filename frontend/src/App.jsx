@@ -13,11 +13,11 @@ import Login from './Login';
 import AdminPanel from './AdminPanel';
 
 const API_BASE = (function () {
-  const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') {
-    return "http://localhost:8000/api";
+  const { hostname, protocol } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `${protocol}//${hostname}:8000/api`;
   }
-  return `http://${host}:3001/api`;
+  return `${protocol}//${hostname}:3001/api`;
 })();
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
