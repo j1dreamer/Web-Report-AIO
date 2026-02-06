@@ -23,8 +23,16 @@ async def auto_sync_loop():
                     logger.info(f"Auto-sync: Added {new_count} records.")
                 else:
                     logger.info("Auto-sync: No new data.")
+                
+                # Reset status after successful loop iteration
+                sync_status["is_syncing"] = False
+                sync_status["current_step"] = "Idle"
+
         except Exception as e:
             logger.error(f"Auto-sync Loop Error: {e}")
+            sync_status["is_syncing"] = False
+            sync_status["current_step"] = "Idle"
+            sync_status["last_message"] = f"Error: {str(e)}"
         
         # Đợi 5 phút (300 giây) rồi mới quét tiếp
         await asyncio.sleep(300)
