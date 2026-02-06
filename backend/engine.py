@@ -141,3 +141,103 @@ class AnalyzerEngine:
         
         if not records: return pd.DataFrame()
         return pd.DataFrame(records)
+
+    async def get_global_summary(self, allowed_sites=None):
+        """Thống kê dựa trên 2000 bản ghi mới nhất trong hệ thống (Cực kỳ ổn định)."""
+        query = {}
+        if allowed_sites:
+            query["site"] = {"$in": allowed_sites}
+        
+        # Lấy 2000 bản ghi gần đây nhất, sắp xếp theo thời gian giảm dần
+        cursor = reports_collection.find(query).sort("dt_obj", -1).limit(2000)
+        results = await cursor.to_list(length=2000)
+        
+        if not results:
+            return {"connectivity": "0%", "alerts": 0, "total_clients": 0}
+            
+        # Group by Site + Device to get the LATEST state of each unique device
+        latest_states = {}
+        for r in results:
+            site = r.get('site', 'Unknown')
+            device = r.get('device', 'Unknown')
+            key = f"{site}_{device}"
+            
+            # Vì đã sort theo dt_obj DESC, nên bản ghi đầu tiên của mỗi key chính là bản ghi mới nhất
+            if key not in latest_states:
+                latest_states[key] = r
+
+        total_devs = len(latest_states)
+        up_devs = 0
+        total_alerts = 0
+        total_clients = 0
+        
+        # Các trạng thái hoạt động tốt
+        UP_STATES = ["up", "online", "connected", "good", "active", "normal", "stable", "1", "true"]
+
+        for r in latest_states.values():
+            state = str(r.get("state", "")).lower().strip()
+            health_str = str(r.get("health", "100")).replace("%", "").strip()
+            total_clients += (r.get("clients") or 0)
+            
+            is_up = state in UP_STATES
+            if is_up: 
+                up_devs += 1
+            else: 
+                total_alerts += 1
+                
+            try:
+                health_val = float(health_str)
+                if health_val < 70 and is_up: 
+                    total_alerts += 1
+            except: pass
+            
+        connectivity = (up_devs / total_devs * 100) if total_devs > 0 else 0
+        
+        return {
+            "connectivity": f"{connectivity:.1f}%",
+            "alerts": total_alerts,
+            "total_clients": total_clients
+        }
+
+    async def inject_test_data(self):
+        """Tạo dữ liệu giả lập để test giao diện."""
+        from datetime import datetime, timedelta
+        import random
+        
+        test_records = []
+        now = datetime.now()
+        sites = ["TEST_SITE_A", "TEST_SITE_B", "DEMO_LAB"]
+        
+        for site in sites:
+            for i in range(5): # 5 devices per site
+                dev_name = f"AP-{site.split('_')[0]}-{i+1}"
+                # Tạo dữ liệu cho 24 giờ qua, mỗi giờ 1 bản ghi
+                for h in range(24):
+                    test_records.append({
+                        "dt_obj": now - timedelta(hours=h),
+                        "site": site,
+                        "device": dev_name,
+                        "clients": random.randint(5, 50),
+                        "health": str(random.randint(80, 100)),
+                        "state": "up",
+                        "model": "AP-515",
+                        "ip": f"192.168.{random.randint(1,254)}.{random.randint(1,254)}",
+                        "is_test": True
+                    })
+        
+        if test_records:
+            await reports_collection.insert_many(test_records)
+            return len(test_records)
+        return 0
+
+    async def clear_test_data(self):
+        """Xóa tất cả dữ liệu được đánh dấu là dữ liệu test."""
+        # Chỉ xóa những record thuộc các site ảo (dummy)
+        test_sites = ["TEST_SITE_A", "TEST_SITE_B", "DEMO_LAB"]
+        result = await reports_collection.delete_many({
+            "$or": [
+                {"is_test": True},
+                {"site": {"$in": test_sites}}
+            ]
+        })
+        return result.deleted_count

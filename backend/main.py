@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from engine import AnalyzerEngine
-from database_mongo import init_mongo_indexes, users_collection, files_collection
+from database_mongo import init_mongo_indexes, users_collection, files_collection, settings_collection
 from auth import verify_password, get_password_hash, create_access_token, decode_token
 
 app = FastAPI(title="HPE Report Analyzer API")
@@ -167,6 +167,22 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # --- API Routes ---
+@app.get("/api/settings")
+async def get_settings():
+    settings = await settings_collection.find_one({"type": "global"})
+    if not settings:
+        return {"enabled_metrics": ['clients', 'health', 'state']}
+    return {"enabled_metrics": settings.get("enabled_metrics", ['clients', 'health', 'state'])}
+
+@app.post("/api/admin/settings", dependencies=[Depends(admin_only)])
+async def update_settings(data: dict):
+    await settings_collection.update_one(
+        {"type": "global"},
+        {"$set": {"enabled_metrics": data.get("enabled_metrics", [])}},
+        upsert=True
+    )
+    return {"message": "Settings updated"}
+
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
     user = await users_collection.find_one({"username": req.username})
@@ -288,17 +304,26 @@ async def load_data(background_tasks: BackgroundTasks, user: dict = Depends(get_
             sync_status["current_step"] = "Idle"
 
     background_tasks.add_task(run_sync)
+    
+    # Lấy thống kê tổng quan (dynamic stats)
+    summary = await backend.get_global_summary(allowed_sites=sites if user["role"] != "admin" else None)
 
     return {
         "status": "success",
         "message": "Syncing cloud files in background...",
         "site_map": site_map,
         "dashboard": sanitized_dashboard,
+        "summary": summary,
         "role": user["role"]
     }
 
+@app.post("/api/admin/inject-test-data")
+async def inject_test_data(admin: dict = Depends(admin_only)):
+    count = await backend.inject_test_data()
+    return {"status": "success", "message": f"Injected {count} test records."}
+
 @app.get("/api/sync-status")
-async def get_sync_status(user: dict = Depends(admin_only)):
+async def get_sync_status(user: dict = Depends(get_current_user)):
     return sync_status
 
 @app.post("/api/analyze")
@@ -312,29 +337,64 @@ async def analyze(req: FilterRequest, user: dict = Depends(get_current_user)):
     else:
         df = await backend.filter_data(req.site, req.device, req.hours)
 
-    if df.empty: return []
+    summary = None
+    if req.metric == "clients":
+        # Khi vẽ biểu đồ, tính kèm summary luôn
+        # allow_sites_list lọc theo đúng request hoặc list được phép
+        asl = [req.site] if req.site != "All Sites" else allowed
+        summary = await backend.get_global_summary(allowed_sites=asl)
+
+    if df.empty: return {"data": [], "summary": summary}
 
     # Dọn dẹp dữ liệu: Xóa khoảng trắng thừa để tránh trùng lặp do lỗi nhập liệu
     df['site'] = df['site'].astype(str).str.strip()
     df['device'] = df['device'].astype(str).str.strip()
     df['time_str'] = df['dt_obj'].dt.strftime("%Y-%m-%d %H:%M")
 
+    result_data = []
     if req.metric == "clients":
         # 1. Lọc trùng: Lấy MAX nếu cùng Site, Device, Phút
         df_dedup = df.groupby(['site', 'device', 'time_str'])['clients'].max().reset_index()
         
         # 2. Nhóm theo thời gian: Cộng tổng clients của tất cả thiết bị trong phút đó
         chart_data = df_dedup.groupby('time_str')['clients'].sum().sort_index()
-        return [{"time": t, "clients": int(c)} for t, c in chart_data.items()]
+        result_data = [{"time": t, "clients": int(c)} for t, c in chart_data.items()]
     
     elif req.metric in ["health", "state"]:
         # Tương tự cho Health/State: Lấy bản ghi mới nhất/duy nhất của mỗi thiết bị trong phút đó
         df_dedup = df.sort_values('dt_obj').drop_duplicates(['site', 'device', 'time_str'], keep='last')
         dist = df_dedup[req.metric].value_counts()
-        return [{"name": str(label), "value": int(val)} for label, val in dist.items()]
+        result_data = [{"name": str(label), "value": int(val)} for label, val in dist.items()]
     
-    return []
+    return {"data": result_data, "summary": summary}
+
+@app.post("/api/admin/clear-sync-cache", dependencies=[Depends(admin_only)])
+async def clear_sync_cache():
+    await files_collection.delete_many({})
+    return {"message": "Đã reset bộ nhớ đệm đồng bộ. Hệ thống sẽ quét lại toàn bộ file từ Cloud."}
+
+@app.post("/api/admin/clear-test-data", dependencies=[Depends(admin_only)])
+async def clear_test_data():
+    count = await backend.clear_test_data()
+    return {"message": f"Đã xóa {count} bản ghi dữ liệu test."}
+
+@app.get("/api/summary")
+async def get_summary(site: str = "All Sites", user: dict = Depends(get_current_user)):
+    if user["role"] == "admin":
+        allowed = await backend.get_sites()
+    else:
+        allowed = user.get("allowed_sites", [])
+    
+    if site != "All Sites":
+        if site not in allowed:
+            raise HTTPException(status_code=403, detail="Access denied")
+        sites_to_calc = [site]
+    else:
+        sites_to_calc = allowed
+        
+    summary = await backend.get_global_summary(allowed_sites=sites_to_calc)
+    return summary
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

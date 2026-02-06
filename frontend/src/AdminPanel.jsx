@@ -3,11 +3,9 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
-import { Loader2, UserPlus, Users, Trash2, Shield, Globe, X, Settings } from "lucide-react";
+import { Loader2, UserPlus, Users, Trash2, Shield, Globe, X, Settings, Activity } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
-
-function AdminPanel({ onBack, allSites }) {
+function AdminPanel({ onBack, allSites, enabledMetrics, setEnabledMetrics, METRICS_OPTIONS, API_BASE, getHeaders }) {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [newUser, setNewUser] = useState({
@@ -24,9 +22,8 @@ function AdminPanel({ onBack, allSites }) {
         setLoading(true);
         setStatus("");
         try {
-            const token = localStorage.getItem("token");
             const res = await axios.get(`${API_BASE}/admin/users`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: getHeaders()
             });
             setUsers(Array.isArray(res.data) ? res.data : []);
         } catch (err) {
@@ -42,7 +39,6 @@ function AdminPanel({ onBack, allSites }) {
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
-        const token = localStorage.getItem("token");
         try {
             if (isEditing) {
                 // Prepare update payload
@@ -53,7 +49,7 @@ function AdminPanel({ onBack, allSites }) {
                 if (newUser.password) payload.password = newUser.password;
 
                 await axios.put(`${API_BASE}/admin/users/${editUsername}`, payload, {
-                    headers: { Authorization: `Bearer ${token}` }
+                    headers: getHeaders()
                 });
                 setStatus("Cập nhật thành công!");
                 cancelEdit();
@@ -63,7 +59,7 @@ function AdminPanel({ onBack, allSites }) {
                     return;
                 }
                 await axios.post(`${API_BASE}/admin/users`, newUser, {
-                    headers: { Authorization: `Bearer ${token}` }
+                    headers: getHeaders()
                 });
                 setStatus("Tạo tài khoản thành công!");
                 setNewUser({ username: "", password: "", role: "user", allowed_sites: [] });
@@ -95,10 +91,9 @@ function AdminPanel({ onBack, allSites }) {
 
     const handleDeleteUser = async (username) => {
         if (!window.confirm(`Xóa tài khoản ${username}?`)) return;
-        const token = localStorage.getItem("token");
         try {
             await axios.delete(`${API_BASE}/admin/users/${username}`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: getHeaders()
             });
             fetchUsers();
         } catch (err) {
@@ -131,6 +126,125 @@ function AdminPanel({ onBack, allSites }) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
+                {/* Dashboard Settings */}
+                <Card className="lg:col-span-12 bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden ring-1 ring-zinc-800">
+                    <CardHeader className="bg-zinc-800/20 border-b border-zinc-800 pb-4">
+                        <CardTitle className="text-xs font-bold text-zinc-300 flex items-center gap-2">
+                            <Settings className="w-4 h-4 text-emerald-500" /> DASHBOARD METRICS VISIBILITY
+                        </CardTitle>
+                        <CardDescription className="text-[10px] text-zinc-500 uppercase font-bold">Bật/Tắt các loại biểu đồ hiển thị trong menu Assemble Widget</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-4 md:p-6">
+                        <div className="flex flex-wrap gap-4">
+                            {METRICS_OPTIONS.map(metric => (
+                                <button
+                                    key={metric.value}
+                                    onClick={async () => {
+                                        let newList;
+                                        if (enabledMetrics.includes(metric.value)) {
+                                            if (enabledMetrics.length > 1) {
+                                                newList = enabledMetrics.filter(m => m !== metric.value);
+                                            } else {
+                                                return; // Keep at least one
+                                            }
+                                        } else {
+                                            newList = [...enabledMetrics, metric.value];
+                                        }
+                                        setEnabledMetrics(newList);
+                                        try {
+                                            await axios.post(`${API_BASE}/admin/settings`,
+                                                { enabled_metrics: newList },
+                                                { headers: getHeaders() }
+                                            );
+                                        } catch (err) {
+                                            console.error("Save settings failed:", err);
+                                        }
+                                    }}
+                                    className={`flex items-center gap-3 px-6 py-3 rounded-xl border-2 transition-all ${enabledMetrics.includes(metric.value)
+                                        ? 'border-emerald-600 bg-emerald-600/10 text-emerald-500'
+                                        : 'border-zinc-800 text-zinc-600 grayscale'
+                                        }`}
+                                >
+                                    <div className={`w-2 h-2 rounded-full ${enabledMetrics.includes(metric.value) ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-zinc-800'}`} />
+                                    <span className="text-xs font-black uppercase tracking-widest">{metric.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Test Tools */}
+                <Card className="lg:col-span-12 bg-zinc-950/50 border-zinc-800 border-dashed shadow-xl overflow-hidden">
+                    <CardContent className="p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-amber-500/10 rounded-lg">
+                                <Activity className="w-4 h-4 text-amber-500" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Debug Tools</p>
+                                <p className="text-[8px] text-zinc-500 uppercase font-bold">Quản lý dữ liệu và bộ nhớ đệm đồng bộ</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                    if (!window.confirm("Buộc hệ thống quét lại toàn bộ file từ Cloud? Việc này không xóa dữ liệu hiện có nhưng sẽ tốn thời gian hơn.")) return;
+                                    try {
+                                        const res = await axios.post(`${API_BASE}/admin/clear-sync-cache`, null, {
+                                            headers: getHeaders()
+                                        });
+                                        alert(res.data.message);
+                                    } catch (err) {
+                                        alert("Lỗi reset cache");
+                                    }
+                                }}
+                                className="border-blue-500/20 text-blue-500 hover:bg-blue-500/10 text-[10px] font-black h-8 px-4 rounded-lg"
+                            >
+                                RESET SYNC CACHE
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                    if (!window.confirm("Xóa toàn bộ dữ liệu mẫu (Test Data)?")) return;
+                                    try {
+                                        const res = await axios.post(`${API_BASE}/admin/clear-test-data`, null, {
+                                            headers: getHeaders()
+                                        });
+                                        alert(res.data.message);
+                                        window.location.reload();
+                                    } catch (err) {
+                                        alert("Lỗi xóa data mẫu");
+                                    }
+                                }}
+                                className="border-red-500/20 text-red-500 hover:bg-red-500/10 text-[10px] font-black h-8 px-4 rounded-lg"
+                            >
+                                CLEAR TEST DATA
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                    try {
+                                        const res = await axios.post(`${API_BASE}/admin/inject-test-data`, null, {
+                                            headers: getHeaders()
+                                        });
+                                        alert(res.data.message);
+                                        window.location.reload();
+                                    } catch (err) {
+                                        alert("Lỗi inject data");
+                                    }
+                                }}
+                                className="border-amber-500/20 text-amber-500 hover:bg-amber-500/10 text-[10px] font-black h-8 px-4 rounded-lg"
+                            >
+                                INJECT TEST DATA
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* User Form (Create/Edit) */}
                 <Card className="lg:col-span-5 bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden ring-1 ring-zinc-800">
                     <CardHeader className={`${isEditing ? 'bg-amber-500/10' : 'bg-zinc-800/20'} border-b border-zinc-800 pb-4`}>

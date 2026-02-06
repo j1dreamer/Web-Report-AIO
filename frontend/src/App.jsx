@@ -7,7 +7,9 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "./components/ui/card";
 import { Button } from "./components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-import { Loader2, Filter, TrendingUp, ShieldCheck, LogOut, Settings, Plus, Trash2, LayoutDashboard, Database, Activity, PieChart, Clock } from "lucide-react";
+import { Loader2, Filter, TrendingUp, ShieldCheck, LogOut, Settings, Plus, Trash2, LayoutDashboard, Database, Activity, PieChart, Clock, FileDown, Share2, Globe, FileSpreadsheet, ImageIcon, Users } from "lucide-react";
+import { toPng, toCanvas } from 'html-to-image';
+import jsPDF from 'jspdf';
 
 import Login from './Login';
 import AdminPanel from './AdminPanel';
@@ -20,6 +22,11 @@ const API_BASE = (function () {
   return `${protocol}//${hostname}:3001/api`;
 })();
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const METRICS_OPTIONS = [
+  { value: 'clients', label: 'Total Clients' },
+  { value: 'health', label: 'Health Distribution' },
+  { value: 'state', label: 'Device State' }
+];
 
 function SyncProgress({ API_BASE, getHeaders, triggerLoad, externalLoading }) {
   const [status, setStatus] = useState({ is_syncing: false, current_step: "Idle", files_total: 0, files_done: 0, last_message: "" });
@@ -92,6 +99,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+  const [enabledMetrics, setEnabledMetrics] = useState(['clients', 'health', 'state']);
+  const [summaryData, setSummaryData] = useState({ connectivity: "0%", alerts: 0, total_clients: 0 });
+  const [currentSummarySite, setCurrentSummarySite] = useState("Global Overview");
 
   const [newWidgetForm, setNewWidgetForm] = useState({
     title: "New Analytics",
@@ -109,6 +120,10 @@ function App() {
       setUser(u);
       setIsAdmin(u.role === "admin");
     }
+    // Load Global Settings
+    axios.get(`${API_BASE}/settings`).then(res => {
+      if (res.data.enabled_metrics) setEnabledMetrics(res.data.enabled_metrics);
+    }).catch(() => { });
   }, []);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
@@ -120,6 +135,7 @@ function App() {
       const newMap = res.data.site_map;
       setSiteMap(newMap);
       setWidgets(res.data.dashboard || []);
+      setSummaryData(res.data.summary || { connectivity: "0%", alerts: 0, total_clients: 0 });
       setStatus(res.data.message);
       setRefreshTrigger(prev => prev + 1);
 
@@ -130,6 +146,17 @@ function App() {
       if (err.response?.status === 401) handleLogout();
     }
     setLoading(false);
+  };
+
+  const fetchSummary = async (siteName) => {
+    try {
+      const res = await axios.get(`${API_BASE}/summary`, {
+        params: { site: siteName },
+        headers: getHeaders()
+      });
+      setSummaryData(res.data);
+      setCurrentSummarySite(siteName === "All Sites" ? "Global Overview" : siteName);
+    } catch (err) { }
   };
 
   const handleLogout = () => {
@@ -160,6 +187,152 @@ function App() {
 
   useEffect(() => { if (user) handleLoad(); }, [user]);
 
+  const generateReport = async () => {
+    const element = document.getElementById('dashboard-content');
+    if (!element) {
+      alert("Không tìm thấy nội dung Dashboard để xuất!");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const canvas = await toCanvas(element, {
+        backgroundColor: '#000000',
+        pixelRatio: 2,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      const imgProps = pdf.getImageProperties(imgData);
+      const margin = 10;
+      const contentWidth = pdfWidth - (margin * 2);
+      const contentHeight = (imgProps.height * contentWidth) / imgProps.width;
+
+      // Header and Footer heights in mm
+      const headerHeight = 35;
+      const footerHeight = 15;
+      const usablePageHeight = pdfHeight - headerHeight - footerHeight - (margin * 2);
+
+      let heightLeft = contentHeight;
+      let position = 0;
+      let pageNumber = 1;
+
+      const addDecoration = (pageNo, totalPages) => {
+        // Header Background
+        pdf.setFillColor(15, 15, 15);
+        pdf.rect(0, 0, pdfWidth, headerHeight, 'F');
+
+        // Brand Logo
+        pdf.setFillColor(37, 99, 235);
+        pdf.roundedRect(10, 8, 12, 12, 2, 2, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text("HPE", 11.5, 15.5);
+
+        // Title
+        pdf.setFontSize(14);
+        pdf.text("INFRASTRUCTURE ANALYTICS REPORT", 28, 14);
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(150, 150, 150);
+        pdf.text("Network Performance & Insights", 28, 19);
+
+        // Metadata box
+        pdf.setFillColor(30, 30, 30);
+        pdf.roundedRect(pdfWidth - 65, 8, 55, 15, 2, 2, 'F');
+        pdf.setTextColor(200, 200, 200);
+        pdf.setFontSize(6);
+        pdf.text(`OPERATOR: ${user.username.toUpperCase()}`, pdfWidth - 62, 13);
+        pdf.text(`TOTAL PAGES: ${totalPages}`, pdfWidth - 62, 18);
+
+        // Accent line
+        pdf.setDrawColor(37, 99, 235);
+        pdf.setLineWidth(0.5);
+        pdf.line(0, headerHeight, pdfWidth, headerHeight);
+
+        // Footer Background
+        pdf.setFillColor(15, 15, 15);
+        pdf.rect(0, pdfHeight - footerHeight, pdfWidth, footerHeight, 'F');
+        pdf.setTextColor(100, 100, 100);
+        pdf.setFontSize(6);
+        const footerCenter = pdfWidth / 2;
+        pdf.text("© 2024 HPE INSIGHTS - AIO REPORTING SYSTEM", footerCenter, pdfHeight - 6, { align: 'center' });
+        pdf.text("CONFIDENTIAL", 10, pdfHeight - 6);
+        pdf.text(`PAGE ${pageNo} / ${totalPages}`, pdfWidth - 10, pdfHeight - 6, { align: 'right' });
+      };
+
+      // Calculate how many pixels on the canvas correspond to the usablePageHeight (mm)
+      // (scale factor = canvas.width / contentWidth)
+      const pxPerMm = canvas.width / contentWidth;
+      const canvasPageHeight = usablePageHeight * pxPerMm;
+      const totalPages = Math.ceil(canvas.height / canvasPageHeight);
+
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) pdf.addPage();
+        addDecoration(i + 1, totalPages);
+
+        // Slice the canvas to get only the part for this page
+        const sourceY = i * canvasPageHeight;
+        const sourceHeight = Math.min(canvas.height - sourceY, canvasPageHeight);
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = sourceHeight;
+
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(canvas, 0, sourceY, canvas.width, sourceHeight, 0, 0, canvas.width, sourceHeight);
+
+        const pageImgData = tempCanvas.toDataURL('image/png');
+        const drawHeight = (sourceHeight * contentWidth) / canvas.width;
+
+        pdf.addImage(pageImgData, 'PNG', margin, headerHeight + margin, contentWidth, drawHeight);
+      }
+
+      pdf.save(`HPE_Report_${user.username}_${new Date().toISOString().split('T')[0]}.pdf`);
+      if (totalPages > 1) {
+        alert(`Đã tạo báo cáo gồm ${totalPages} trang.`);
+      }
+    } catch (err) {
+      console.error("PDF Export failed:", err);
+      alert("Lỗi xuất PDF: " + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportAsImage = async (elementId = 'dashboard-content', fileName = 'HPE_Dashboard') => {
+    const element = document.getElementById(elementId);
+    if (!element) {
+      alert("Không tìm thấy nội dung để xuất ảnh!");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const dataUrl = await toPng(element, {
+        backgroundColor: '#000000',
+        pixelRatio: 2,
+      });
+      const link = document.createElement('a');
+      link.download = `${fileName}_${new Date().toISOString().split('T')[0]}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("Image export failed:", err);
+      alert("Lỗi xuất ảnh: " + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (!user) return <Login onLoginSuccess={(u) => { setUser(u); setIsAdmin(u.role === 'admin'); }} />;
 
   return (
@@ -180,6 +353,18 @@ function App() {
                 <Settings className="w-4 h-4 md:mr-2" /> <span className="hidden sm:inline">{showAdminPanel ? "CLOSE ADMIN" : "ADMIN PANEL"}</span>
               </Button>
             )}
+            {!showAdminPanel && (
+              <div className="flex gap-2">
+                <Button onClick={generateReport} disabled={isExporting} className="flex-1 md:flex-none bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 border border-blue-600/30 hover:border-blue-500 rounded-full h-10 px-4 font-bold text-xs shadow-lg shadow-blue-500/5">
+                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4 md:mr-2" />}
+                  <span className="hidden sm:inline">PDF</span>
+                </Button>
+                <Button onClick={() => exportAsImage()} disabled={isExporting} className="flex-1 md:flex-none bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 border border-emerald-600/30 hover:border-emerald-500 rounded-full h-10 px-4 font-bold text-xs shadow-lg shadow-emerald-500/5">
+                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4 md:mr-2" />}
+                  <span className="hidden sm:inline">IMAGE</span>
+                </Button>
+              </div>
+            )}
             <Button onClick={handleLogout} variant="destructive" className="flex-1 md:flex-none rounded-full h-10 px-4 font-bold shadow-lg shadow-red-500/10 text-xs text-white">
               <LogOut className="w-4 h-4 md:mr-2" /> <span className="hidden sm:inline">LOGOUT</span>
             </Button>
@@ -187,7 +372,15 @@ function App() {
         </header>
 
         {showAdminPanel ? (
-          <AdminPanel onBack={() => setShowAdminPanel(false)} allSites={Object.keys(siteMap)} />
+          <AdminPanel
+            onBack={() => setShowAdminPanel(false)}
+            allSites={Object.keys(siteMap)}
+            enabledMetrics={enabledMetrics}
+            setEnabledMetrics={setEnabledMetrics}
+            METRICS_OPTIONS={METRICS_OPTIONS}
+            API_BASE={API_BASE}
+            getHeaders={getHeaders}
+          />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
             <div className="lg:col-span-3 space-y-6">
@@ -237,9 +430,9 @@ function App() {
                       }}>
                         <SelectTrigger className="bg-zinc-950 border-zinc-800 h-9 text-xs font-bold text-zinc-200"><SelectValue /></SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
-                          <SelectItem value="clients">Total Clients</SelectItem>
-                          <SelectItem value="health">Health Distribution</SelectItem>
-                          <SelectItem value="state">Device State</SelectItem>
+                          {METRICS_OPTIONS.filter(m => enabledMetrics.includes(m.value)).map(m => (
+                            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -264,17 +457,71 @@ function App() {
               {status && <div className="text-[9px] text-zinc-500 font-mono italic text-center animate-pulse tracking-wide uppercase">{status}</div>}
             </div>
 
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-              {widgets.map(w => (
-                <div key={w.id} className="lg:col-span-1">
-                  <WidgetCard
-                    widget={w}
-                    refreshTrigger={refreshTrigger}
-                    onRemove={() => removeWidget(w.id)}
-                    onUpdateTime={(time) => updateWidgetTime(w.id, time)}
-                  />
+            <div id="dashboard-content" className="lg:col-span-9 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  <Select
+                    value={currentSummarySite === "Global Overview" ? "All Sites" : currentSummarySite}
+                    onValueChange={(v) => fetchSummary(v)}
+                  >
+                    <SelectTrigger className="bg-transparent border-none p-0 h-auto text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] focus:ring-0 focus:ring-offset-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
+                      {Object.keys(siteMap).map(s => (
+                        <SelectItem key={s} value={s} className="text-[10px] uppercase font-bold">{s === "All Sites" ? "Global Overview" : s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ))}
+                <span className="text-[8px] font-bold text-zinc-600 uppercase tabular-nums">Refreshed: {new Date().toLocaleTimeString()}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                {[
+                  { label: "Total Clients", value: (summaryData.total_clients || 0).toLocaleString(), icon: Users, color: "text-blue-500", detail: "Active Sessions" },
+                  {
+                    label: "Connectivity",
+                    value: summaryData.connectivity,
+                    icon: Activity,
+                    color: parseFloat(summaryData.connectivity) < 70 ? "text-red-500" : parseFloat(summaryData.connectivity) < 90 ? "text-amber-500" : "text-emerald-500",
+                    detail: "Network Health"
+                  },
+                  { label: "Total Alerts", value: summaryData.alerts, icon: ShieldCheck, color: summaryData.alerts > 0 ? "text-red-500" : "text-amber-500", detail: "Issues Found" },
+                ].map((stat, i) => (
+                  <Card key={i} className="bg-zinc-900 border-zinc-800/50 shadow-lg overflow-hidden group hover:border-zinc-700 transition-all">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">{stat.label}</p>
+                        <p className="text-xl md:text-2xl font-black text-white">{stat.value}</p>
+                        <p className="text-[8px] font-bold text-zinc-600 uppercase mt-1">{stat.detail}</p>
+                      </div>
+                      <div className={`p-3 rounded-xl bg-zinc-800/50 group-hover:scale-110 transition-transform ${stat.color} shadow-inner`}>
+                        <stat.icon className="w-5 h-5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                {widgets.map(w => (
+                  <div key={w.id} className="lg:col-span-1">
+                    <WidgetCard
+                      widget={w}
+                      refreshTrigger={refreshTrigger}
+                      onRemove={() => removeWidget(w.id)}
+                      onUpdateTime={(time) => updateWidgetTime(w.id, time)}
+                      onSummaryUpdate={(site, data) => {
+                        if (data) {
+                          setSummaryData(data);
+                          setCurrentSummarySite(site === "All Sites" ? "Global Overview" : site);
+                        }
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -293,9 +540,10 @@ const TIME_OPTIONS = [
   { label: "7 ngày", value: "168" },
 ];
 
-function WidgetCard({ widget, onRemove, onUpdateTime, refreshTrigger }) {
+function WidgetCard({ widget, onRemove, onUpdateTime, refreshTrigger, onSummaryUpdate }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const timeRange = widget.timeRange || "24";
 
   const fetchData = async () => {
@@ -307,9 +555,34 @@ function WidgetCard({ widget, onRemove, onUpdateTime, refreshTrigger }) {
         metric: widget.metric,
         hours: timeRange === "0" ? null : parseInt(timeRange)
       }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
-      setData(res.data);
+      setData(res.data.data || []);
+      if (res.data.summary && onSummaryUpdate) {
+        onSummaryUpdate(widget.site, res.data.summary);
+      }
     } catch (err) { }
     setLoading(false);
+  };
+
+  const exportCSV = () => {
+    if (!data || data.length === 0) return;
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    // Header
+    const headers = Object.keys(data[0]);
+    csvContent += headers.join(",") + "\n";
+
+    // Rows
+    data.forEach(row => {
+      csvContent += headers.map(h => row[h]).join(",") + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${widget.site}_${widget.metric}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   useEffect(() => {
@@ -318,20 +591,65 @@ function WidgetCard({ widget, onRemove, onUpdateTime, refreshTrigger }) {
     return () => clearInterval(interval);
   }, [widget, timeRange, refreshTrigger]);
 
+  const exportWidgetAsImage = async () => {
+    const element = document.getElementById(`widget-${widget.id}`);
+    if (!element) {
+      alert("Không tìm thấy biểu đồ để xuất!");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const dataUrl = await toPng(element, {
+        backgroundColor: '#18181b', // zinc-900
+        quality: 1,
+        pixelRatio: 3,
+        // Loại bỏ các nút interactive trước khi chụp (filter out icons)
+        filter: (node) => {
+          if (node.tagName === 'BUTTON' || (node.classList && node.classList.contains('lucide'))) {
+            // Do not include buttons or icons in the export
+            // but actually we already use data-html2canvas-ignore (though toPng doesn't support it by default)
+            // So we rely on standard CSS hiding if needed
+          }
+          return true;
+        }
+      });
+
+      const link = document.createElement('a');
+      link.download = `HPE_${widget.site}_${widget.metric}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (e) {
+      alert("Lỗi xuất ảnh biểu đồ: " + e.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
-    <Card className="bg-zinc-900 border-zinc-800 shadow-xl relative group overflow-hidden">
+    <Card id={`widget-${widget.id}`} className="bg-zinc-900 border-zinc-800 shadow-xl relative group overflow-hidden">
       <CardHeader className="pb-2 space-y-3">
         <div className="flex items-start justify-between">
           <CardTitle className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2 pr-8">
             {widget.metric === 'clients' ? <TrendingUp className="w-3 h-3 text-blue-500" /> : <PieChart className="w-3 h-3 text-emerald-500" />}
             <span className="truncate">{widget.site} {widget.device !== 'All Devices' ? `- ${widget.device}` : ''} - {widget.metric.toUpperCase()}</span>
           </CardTitle>
-          <button onClick={onRemove} className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-all">
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <div className="absolute top-4 right-4 flex items-center gap-2" data-html2canvas-ignore>
+            <button onClick={exportWidgetAsImage} title="Export Image" className="text-zinc-700 hover:text-blue-500 transition-all">
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> : <ImageIcon className="w-4 h-4" />}
+            </button>
+            <button onClick={exportCSV} title="Export CSV" className="text-zinc-700 hover:text-emerald-500 transition-all">
+              <FileSpreadsheet className="w-4 h-4" />
+            </button>
+            <button onClick={onRemove} title="Remove Widget" className="text-zinc-700 hover:text-red-500 transition-all">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div data-html2canvas-ignore className="flex items-center gap-2">
           <Clock className="w-3 h-3 text-zinc-500" />
           <div className="flex flex-wrap gap-1">
             {TIME_OPTIONS.map(opt => (

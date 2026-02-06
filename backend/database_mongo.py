@@ -14,6 +14,7 @@ database = client.hpe_reports
 reports_collection = database.get_collection("records")
 files_collection = database.get_collection("processed_files")
 users_collection = database.get_collection("users")
+settings_collection = database.get_collection("settings")
 
 async def init_mongo_indexes():
     """Tạo indexes để tìm kiếm nhanh"""
