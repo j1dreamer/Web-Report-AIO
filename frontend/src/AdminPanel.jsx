@@ -117,31 +117,31 @@ function AdminPanel({ onBack, allSites }) {
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex items-center justify-between">
+        <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
-                    <h2 className="text-3xl font-black tracking-tighter text-white uppercase flex items-center gap-3">
-                        <Shield className="w-8 h-8 text-blue-500" /> ADMIN PANEL
+                    <h2 className="text-2xl md:text-3xl font-black tracking-tighter text-white uppercase flex items-center gap-3">
+                        <Shield className="w-6 h-6 md:w-8 md:h-8 text-blue-500" /> ADMIN PANEL
                     </h2>
-                    <p className="text-zinc-500 font-medium">Quản lý người dùng & Phân quyền hạ tầng</p>
+                    <p className="text-zinc-500 font-medium text-xs md:text-base">Quản lý người dùng & Phân quyền hạ tầng</p>
                 </div>
-                <Button onClick={onBack} variant="outline" className="border-zinc-800 text-zinc-400 hover:text-white transition-all rounded-full px-6">
+                <Button onClick={onBack} variant="outline" className="border-zinc-800 text-zinc-400 hover:text-white transition-all rounded-full px-6 h-10 text-xs font-bold">
                     <X className="w-4 h-4 mr-2" /> QUAY LẠI
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
                 {/* User Form (Create/Edit) */}
                 <Card className="lg:col-span-5 bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden ring-1 ring-zinc-800">
                     <CardHeader className={`${isEditing ? 'bg-amber-500/10' : 'bg-zinc-800/20'} border-b border-zinc-800 pb-4`}>
-                        <CardTitle className={`text-sm font-bold flex items-center gap-2 ${isEditing ? 'text-amber-500' : 'text-blue-400'}`}>
+                        <CardTitle className={`text-xs md:sm font-bold flex items-center gap-2 ${isEditing ? 'text-amber-500' : 'text-blue-400'}`}>
                             {isEditing ? <Settings className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
                             {isEditing ? `CHỈNH SỬA: ${editUsername}` : "TẠO TÀI KHOẢN MỚI"}
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-6 space-y-6">
+                    <CardContent className="p-4 md:p-6 space-y-6">
                         <form onSubmit={handleFormSubmit} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-[10px] uppercase font-black text-zinc-500">Username</label>
                                     <Input
@@ -154,7 +154,7 @@ function AdminPanel({ onBack, allSites }) {
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] uppercase font-black text-zinc-500">
-                                        {isEditing ? "Password (để trống nếu ko đổi)" : "Password"}
+                                        {isEditing ? "Password (để trống)" : "Password"}
                                     </label>
                                     <Input
                                         type="password"
@@ -174,7 +174,7 @@ function AdminPanel({ onBack, allSites }) {
                                             key={r}
                                             type="button"
                                             onClick={() => setNewUser({ ...newUser, role: r })}
-                                            className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold border-2 transition-all ${newUser.role === r ? 'border-blue-600 bg-blue-600/10 text-blue-500' : 'border-zinc-800 text-zinc-500 grayscale'
+                                            className={`flex-1 py-2 px-4 rounded-lg text-[10px] md:text-xs font-bold border-2 transition-all ${newUser.role === r ? 'border-blue-600 bg-blue-600/10 text-blue-500' : 'border-zinc-800 text-zinc-500 grayscale'
                                                 }`}
                                         >
                                             {r.toUpperCase()}
@@ -206,11 +206,11 @@ function AdminPanel({ onBack, allSites }) {
                             )}
 
                             <div className="flex gap-2">
-                                <Button type="submit" className={`flex-1 font-bold h-11 shadow-lg ${isEditing ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}>
+                                <Button type="submit" className={`flex-1 font-bold h-11 text-xs shadow-lg ${isEditing ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}>
                                     {isEditing ? "CẬP NHẬT TÀI KHOẢN" : "LƯU TÀI KHOẢN"}
                                 </Button>
                                 {isEditing && (
-                                    <Button type="button" onClick={cancelEdit} variant="outline" className="border-zinc-800">
+                                    <Button type="button" onClick={cancelEdit} variant="outline" className="border-zinc-800 text-xs">
                                         HỦY
                                     </Button>
                                 )}
@@ -223,7 +223,7 @@ function AdminPanel({ onBack, allSites }) {
                 {/* User List */}
                 <Card className="lg:col-span-7 bg-zinc-900 border-zinc-800 shadow-xl overflow-hidden ring-1 ring-zinc-800">
                     <CardHeader className="bg-zinc-800/20 border-b border-zinc-800 pb-4">
-                        <CardTitle className="text-sm font-bold flex items-center gap-2 text-zinc-300">
+                        <CardTitle className="text-xs md:sm font-bold flex items-center gap-2 text-zinc-300">
                             <Users className="w-4 h-4 text-emerald-500" /> DANH SÁCH TÀI KHOẢN
                         </CardTitle>
                     </CardHeader>
@@ -245,26 +245,26 @@ function AdminPanel({ onBack, allSites }) {
                                     </div>
                                 </div>
                             ) : users.map(u => (
-                                <div key={u.username} className={`p-4 flex items-center justify-between hover:bg-zinc-800/30 transition-all ${editUsername === u.username ? 'bg-amber-500/5 ring-1 ring-inset ring-amber-500/20' : ''}`}>
+                                <div key={u.username} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-zinc-800/30 transition-all ${editUsername === u.username ? 'bg-amber-500/5 ring-1 ring-inset ring-amber-500/20' : ''}`}>
                                     <div className="flex items-center gap-4">
-                                        <div className={`p-3 rounded-full ${u.role === 'admin' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                                            {u.role === 'admin' ? <Shield className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                                        <div className={`p-2.5 rounded-full ${u.role === 'admin' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                            {u.role === 'admin' ? <Shield className="w-4 h-4 md:w-5 md:h-5" /> : <Users className="w-4 h-4 md:w-5 md:h-5" />}
                                         </div>
                                         <div>
-                                            <h4 className="font-bold text-white uppercase tracking-tight">{u.username}</h4>
-                                            <p className="text-[10px] text-zinc-500 font-bold uppercase">{u.role}</p>
+                                            <h4 className="font-bold text-white uppercase tracking-tight text-sm">{u.username}</h4>
+                                            <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase">{u.role}</p>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-6">
-                                        <div className="text-right hidden sm:block">
-                                            <p className="text-[10px] text-zinc-500 uppercase font-black mb-1">Allowed Sites</p>
-                                            <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
+                                    <div className="flex items-center justify-between sm:justify-end gap-4 md:gap-6">
+                                        <div className="text-right">
+                                            <p className="text-[9px] text-zinc-500 uppercase font-black mb-1">Allowed Sites</p>
+                                            <div className="flex flex-wrap gap-1 justify-end max-w-[150px] md:max-w-[200px]">
                                                 {u.role === 'admin' ? (
-                                                    <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded border border-zinc-700">ALL INFRASTRUCTURE</span>
+                                                    <span className="text-[8px] md:text-[9px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded border border-zinc-700">ALL INFRA</span>
                                                 ) : u.allowed_sites?.length > 0 ? (
-                                                    u.allowed_sites.map(s => <span key={s} className="text-[9px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20">{s}</span>)
-                                                ) : <span className="text-[9px] text-zinc-600 italic">None Assigned</span>}
+                                                    u.allowed_sites.map(s => <span key={s} className="text-[8px] md:text-[9px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20">{s}</span>)
+                                                ) : <span className="text-[8px] md:text-[9px] text-zinc-600 italic">None</span>}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">

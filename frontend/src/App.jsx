@@ -85,7 +85,6 @@ function App() {
   const [siteMap, setSiteMap] = useState({ "All Sites": ["All Devices"] });
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
-  const [timeRange, setTimeRange] = useState("0");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [newWidgetForm, setNewWidgetForm] = useState({
@@ -93,7 +92,8 @@ function App() {
     site: "All Sites",
     device: "All Devices",
     metric: "clients",
-    type: "area"
+    type: "area",
+    timeRange: "24" // Default to 24h
   });
 
   useEffect(() => {
@@ -117,7 +117,6 @@ function App() {
       setStatus(res.data.message);
       setRefreshTrigger(prev => prev + 1);
 
-      // Nếu "All Sites" không tồn tại, tự động chọn Site đầu tiên có trong danh sách
       if (newMap && !newMap["All Sites"] && Object.keys(newMap).length > 0) {
         setNewWidgetForm(prev => ({ ...prev, site: Object.keys(newMap)[0] }));
       }
@@ -141,6 +140,12 @@ function App() {
     await axios.post(`${API_BASE}/user/dashboard`, { config: updated }, { headers: getHeaders() });
   };
 
+  const updateWidgetTime = async (id, time) => {
+    const updated = widgets.map(w => w.id === id ? { ...w, timeRange: time } : w);
+    setWidgets(updated);
+    await axios.post(`${API_BASE}/user/dashboard`, { config: updated }, { headers: getHeaders() });
+  };
+
   const removeWidget = async (id) => {
     const updated = widgets.filter(w => w.id !== id);
     setWidgets(updated);
@@ -152,42 +157,25 @@ function App() {
   if (!user) return <Login onLoginSuccess={(u) => { setUser(u); setIsAdmin(u.role === 'admin'); }} />;
 
   return (
-    <div className="min-h-screen bg-black text-zinc-50 p-6 md:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <header className="flex items-center justify-between">
+    <div className="min-h-screen bg-black text-zinc-50 p-4 md:p-10 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <h1 className="text-3xl font-black tracking-tighter text-white flex items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-black tracking-tighter text-white flex items-center gap-3">
               <span className="p-2 bg-blue-600 rounded-xl shadow-lg">HPE</span> INSIGHTS
             </h1>
             <p className="text-zinc-400 font-medium uppercase text-[10px] tracking-widest flex items-center gap-2">
               <Database className="w-3 h-3 text-blue-500" /> {user.username} Dashboard
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Select value={timeRange} onValueChange={setTimeRange}>
-              <SelectTrigger className="w-[140px] bg-zinc-900 border-zinc-800 rounded-full h-10 px-4 font-bold text-xs text-white">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-3 h-3 text-blue-500" />
-                  <SelectValue placeholder="Time Range" />
-                </div>
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-300">
-                <SelectItem value="0">Tất cả thời gian</SelectItem>
-                <SelectItem value="1">1 giờ qua</SelectItem>
-                <SelectItem value="4">4 giờ qua</SelectItem>
-                <SelectItem value="6">6 giờ qua</SelectItem>
-                <SelectItem value="12">12 giờ qua</SelectItem>
-                <SelectItem value="24">24 giờ qua</SelectItem>
-              </SelectContent>
-            </Select>
-
+          <div className="flex flex-wrap items-center gap-2 md:gap-3">
             {isAdmin && (
-              <Button variant="outline" onClick={() => setShowAdminPanel(!showAdminPanel)} className="border-zinc-800 text-zinc-100 hover:bg-zinc-800 rounded-full h-10 px-4 font-bold">
-                <Settings className="w-4 h-4 mr-2" /> {showAdminPanel ? "CLOSE ADMIN" : "ADMIN PANEL"}
+              <Button variant="outline" onClick={() => setShowAdminPanel(!showAdminPanel)} className="flex-1 md:flex-none border-zinc-800 text-zinc-100 hover:bg-zinc-800 rounded-full h-10 px-4 font-bold text-xs">
+                <Settings className="w-4 h-4 md:mr-2" /> <span className="hidden sm:inline">{showAdminPanel ? "CLOSE ADMIN" : "ADMIN PANEL"}</span>
               </Button>
             )}
-            <Button onClick={handleLogout} variant="destructive" className="rounded-full h-10 px-4 font-bold shadow-lg shadow-red-500/10">
-              <LogOut className="w-4 h-4 mr-2" /> LOGOUT
+            <Button onClick={handleLogout} variant="destructive" className="flex-1 md:flex-none rounded-full h-10 px-4 font-bold shadow-lg shadow-red-500/10 text-xs text-white">
+              <LogOut className="w-4 h-4 md:mr-2" /> <span className="hidden sm:inline">LOGOUT</span>
             </Button>
           </div>
         </header>
@@ -195,10 +183,14 @@ function App() {
         {showAdminPanel ? (
           <AdminPanel onBack={() => setShowAdminPanel(false)} allSites={Object.keys(siteMap)} />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
             <div className="lg:col-span-3 space-y-6">
               <Card className="bg-zinc-900 border-zinc-800">
-                <CardHeader className="pb-4"><CardTitle className="text-xs font-black text-zinc-400 flex items-center gap-2 uppercase tracking-widest"><Plus className="w-4 h-4 text-emerald-500" /> Assemble Widget</CardTitle></CardHeader>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xs font-black text-zinc-400 flex items-center gap-2 uppercase tracking-widest">
+                    <Plus className="w-4 h-4 text-emerald-500" /> Assemble Widget
+                  </CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-4">
                     <div className="space-y-1">
@@ -245,7 +237,7 @@ function App() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button onClick={addWidget} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold h-10 mt-2">ADD TO DASHBOARD</Button>
+                    <Button onClick={addWidget} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold h-10 mt-2 text-xs">ADD TO DASHBOARD</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -266,14 +258,14 @@ function App() {
               {status && <div className="text-[9px] text-zinc-500 font-mono italic text-center animate-pulse tracking-wide uppercase">{status}</div>}
             </div>
 
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               {widgets.map(w => (
-                <div key={w.id} className="lg:col-span-6 xl:col-span-4">
+                <div key={w.id} className="lg:col-span-1">
                   <WidgetCard
                     widget={w}
-                    timeRange={timeRange}
                     refreshTrigger={refreshTrigger}
                     onRemove={() => removeWidget(w.id)}
+                    onUpdateTime={(time) => updateWidgetTime(w.id, time)}
                   />
                 </div>
               ))}
@@ -285,9 +277,20 @@ function App() {
   );
 }
 
-function WidgetCard({ widget, onRemove, timeRange, refreshTrigger }) {
+const TIME_OPTIONS = [
+  { label: "Tất cả", value: "0" },
+  { label: "1 giờ", value: "1" },
+  { label: "4 giờ", value: "4" },
+  { label: "12 giờ", value: "12" },
+  { label: "1 ngày", value: "24" },
+  { label: "3 ngày", value: "72" },
+  { label: "7 ngày", value: "168" },
+];
+
+function WidgetCard({ widget, onRemove, onUpdateTime, refreshTrigger }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const timeRange = widget.timeRange || "24";
 
   const fetchData = async () => {
     setLoading(true);
@@ -305,41 +308,65 @@ function WidgetCard({ widget, onRemove, timeRange, refreshTrigger }) {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 60000); // Tự động làm mới dữ liệu mỗi 1 phút
+    const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [widget, timeRange, refreshTrigger]);
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800 shadow-xl relative group">
-      <button onClick={onRemove} className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-          {widget.metric === 'clients' ? <TrendingUp className="w-3 h-3 text-blue-500" /> : <PieChart className="w-3 h-3 text-emerald-500" />}
-          {widget.site} {widget.device !== 'All Devices' ? `- ${widget.device}` : ''} - {widget.metric.toUpperCase()}
-        </CardTitle>
+    <Card className="bg-zinc-900 border-zinc-800 shadow-xl relative group overflow-hidden">
+      <CardHeader className="pb-2 space-y-3">
+        <div className="flex items-start justify-between">
+          <CardTitle className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2 pr-8">
+            {widget.metric === 'clients' ? <TrendingUp className="w-3 h-3 text-blue-500" /> : <PieChart className="w-3 h-3 text-emerald-500" />}
+            <span className="truncate">{widget.site} {widget.device !== 'All Devices' ? `- ${widget.device}` : ''} - {widget.metric.toUpperCase()}</span>
+          </CardTitle>
+          <button onClick={onRemove} className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-all">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Clock className="w-3 h-3 text-zinc-500" />
+          <div className="flex flex-wrap gap-1">
+            {TIME_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => onUpdateTime(opt.value)}
+                className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all ${timeRange === opt.value
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                    : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                  }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="h-[250px] flex items-center justify-center p-4">
-        {loading ? <Loader2 className="w-6 h-6 animate-spin text-zinc-800" /> : (
+        {loading ? <Loader2 className="w-6 h-6 animate-spin text-zinc-800" /> : data.length === 0 ? (
+          <div className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">No Data Available</div>
+        ) : (
           <ResponsiveContainer width="100%" height="100%">
             {widget.type === 'area' ? (
-              <AreaChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+              <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs><linearGradient id="colorG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis
                   dataKey="time"
-                  tick={{ fontSize: 10, fill: '#71717a' }}
+                  tick={{ fontSize: 9, fill: '#71717a' }}
                   tickFormatter={(val) => {
                     const [date, time] = val.split(' ');
                     if (!date || !time) return val;
                     const [y, m, d] = date.split('-');
-                    return `${d}/${m} ${time}`;
+                    return parseInt(timeRange) > 24 ? `${d}/${m} ${time}` : time;
                   }}
                   axisLine={false}
                   tickLine={false}
-                  minTickGap={30}
+                  minTickGap={40}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: '#71717a' }}
+                  tick={{ fontSize: 9, fill: '#71717a' }}
                   axisLine={false}
                   tickLine={false}
                 />
@@ -359,7 +386,7 @@ function WidgetCard({ widget, onRemove, timeRange, refreshTrigger }) {
                   contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px', fontSize: '10px', color: '#fff' }}
                   labelStyle={{ color: '#a1a1aa' }}
                 />
-                <Legend wrapperStyle={{ fontSize: '10px' }} />
+                <Legend wrapperStyle={{ fontSize: '9px' }} />
               </ReChartsPieChart>
             )}
           </ResponsiveContainer>
