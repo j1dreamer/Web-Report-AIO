@@ -12,7 +12,13 @@ import { Loader2, Filter, TrendingUp, ShieldCheck, LogOut, Settings, Plus, Trash
 import Login from './Login';
 import AdminPanel from './AdminPanel';
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
+const API_BASE = (function () {
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return "http://localhost:8000/api";
+  }
+  return `http://${host}:3001/api`;
+})();
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 function SyncProgress({ API_BASE, getHeaders, triggerLoad, externalLoading }) {
@@ -333,8 +339,8 @@ function WidgetCard({ widget, onRemove, onUpdateTime, refreshTrigger }) {
                 key={opt.value}
                 onClick={() => onUpdateTime(opt.value)}
                 className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all ${timeRange === opt.value
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                    : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                  : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
                   }`}
               >
                 {opt.label}
